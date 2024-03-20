@@ -81,7 +81,8 @@ const unknownEndpoint = (request, response) => {
 // Does not apply to id's that are not in notes.
 app.use(unknownEndpoint);
 
-const PORT = process.env || 3001;
+const PORT = process.env.PORT || 3001;
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
