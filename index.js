@@ -44,7 +44,6 @@ app.get('/', (request, response) => {
 });
 
 app.get('/api/notes', (request, response) => {
-  console.log('backend running');
   response.json(notes);
 });
 
@@ -79,10 +78,8 @@ app.put('/api/notes/:id', (request, response) => {
 
   const id = Number(request.params.id);
   const note = notes.find(note => note.id === id);
-  console.log('note change backend', note);
   if (note) {
     note.important = !note.important;
-    console.log('note', note);
     response.json(note);
   } else {
     response.status(404).end();
