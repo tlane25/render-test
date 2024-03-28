@@ -1,23 +1,7 @@
+require('dotenv').config();
 const express = require('express');
 const app = express();
-
-let notes = [
-  {
-    id: 1,
-    content: "HTML is easy",
-    important: true
-  },
-  {
-    id: 2,
-    content: "Browser can execute only JavaScript",
-    important: false
-  },
-  {
-    id: 3,
-    content: "GET and POST are the most important methods of HTTP protocol",
-    important: true
-  },
-]
+const Note = require('./models/note.js');
 
 app.use(express.static('dist'));
 const requestLogger = (request, response, next) => {
@@ -44,69 +28,103 @@ app.get('/', (request, response) => {
 });
 
 app.get('/api/notes', (request, response) => {
-  response.json(notes);
+  Note.find({}).then(notes => {
+    response.json(notes);
+  });
 });
 
-const generateId = () => {
-  const maxId = notes.length > 0
-    ? Math.max(...notes.map(n => n.id)) 
-    : 0;
-    return maxId + 1;
-}
-
-app.post('/api/notes', (request, response) => {
+app.post('/api/notes', (request, response, next) => {
   const body = request.body;
 
-  if (!body.content) {
-    return response.status(400).json({
-      error: 'content missing',
-    });
-  }
-
-  const note = {
+  const note = new Note({
     content: body.content,
-    important: Boolean(body.important) || false,
-    id: generateId(),
-  }
+    important: body.important || false,
+  });
   
-  notes = notes.concat(note);
-
-  response.json(note);
+  note.save()
+    .then(savedNote => {
+    response.json(savedNote);
+    })
+    .catch(error => next(error));
 });
 
-app.put('/api/notes/:id', (request, response) => {
 
-  const id = Number(request.params.id);
-  const note = notes.find(note => note.id === id);
-  if (note) {
-    note.important = !note.important;
-    response.json(note);
-  } else {
-    response.status(404).end();
-  }
+/* Note:
+  I had some confusion stemming from this code. The question I wrestled
+  with is how do we update the information in the database. I found the
+  findByIdAndUpdate method but then began to wonder where the data is 
+  getting updated. Well, the answer is that the frontend application 
+  handles this change. It sends the note to change, with the changes
+  already implemented in the request body. It really is as simple as that
+
+  Then we use the request body to create an object that contains the
+  values we wish to update to the database. The change is made in the
+  database and, the response for this method is the updatedNote data
+  from the database. 
+
+  The frontend takes this response (a single value) maps through the
+  existing notes and  
+*/
+app.put('/api/notes/:id', (request, response) => {
+  const { content, important } = request.body;
+
+  Note.findByIdAndUpdate(
+    request.params.id,
+    { content, important },
+    {new: true, runValidators: true, context: 'query'}
+    )
+    .then(updatedNote => {
+      response.json(updatedNote);
+    })
+    .catch(error => next(error));
 });
 
 app.get('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id);
-  const note = notes.find(note => note.id === id);
-  if (note) {
-    response.json(note);
-  } else {
-    console.log('x');
-    response.status(404).end();
-  }
+  Note.findById(request.params.id)
+    .then(note => { 
+      if (note) {
+        response.json(note)
+      } else {
+        response.status(404).end();
+      } 
+    })
+    .catch(error => next(error));
 });
 
 app.delete('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id);
-  notes = notes.filter(note => note.id !== id);
+  Note.findByIdAndDelete(request.params.id)
+    .then( result => {
+      if (result) {
+        response.status(204).end()
+      } else {
+        response.status(201).send({error: "note not found"});
+      }
+    })
+    .catch(error => next(error));
+
+  // const id = Number(request.params.id);
+  // notes = notes.filter(note => note.id !== id);
   
-  response.status(204).end();
+  // response.status(204).end();
 });
 
 app.use(unknownEndpoint);
 
-const PORT = process.env.PORT || 3001;
+const errorHandler = (error, request, response, next) => {
+  console.error(error.message);
+
+  if (error.name === "CastError") {
+    return response.status(400).send({ error: 'malformed id'});
+  } else if (error.name === "ValidationError") {
+    return response.status(400).json({ error: error.message })
+  }
+
+  next(error);
+}
+
+app.use(errorHandler);
+
+const PORT = process.env.PORT;
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
